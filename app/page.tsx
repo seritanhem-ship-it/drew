@@ -30,6 +30,7 @@ const money = new Intl.NumberFormat("en-ET", { maximumFractionDigits: 0 });
 
 export default function Home() {
   const [view, setView] = useState<View>("home");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -87,7 +88,7 @@ export default function Home() {
 
   return (
     <main>
-      <header className="nav shell">
+      <header className={`nav shell ${view === "home" ? "cinemaNav" : ""}`}>
         <button className="brand" onClick={() => setView("home")} aria-label="Tesfa Loan home">
           <span className="brandMark">ተ</span><span>Tesfa <b>Loan</b></span>
         </button>
@@ -96,38 +97,20 @@ export default function Home() {
           <button onClick={() => { setMessage(""); setView("track"); }}>Track application</button>
           <button className="navCta" onClick={() => { setMessage(""); setView("apply"); }}>Apply now <span>→</span></button>
         </nav>
+        {view === "home" && <button className="burger" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-label={menuOpen ? "Close menu" : "Open menu"}><i></i><i></i></button>}
       </header>
 
       {view === "home" && <>
-        <section className="hero shell">
-          <div className="heroCopy">
-            <div className="pill"><span>●</span> Secure, simple & transparent</div>
-            <h1>Move forward with <em>confidence.</em></h1>
-            <p>Apply for the support you need with a clear process, fair review, and updates you can follow from start to finish.</p>
-            <div className="actions">
-              <button className="primary" onClick={() => setView("apply")}>Start your application <span>→</span></button>
-              <button className="secondary" onClick={() => setView("track")}>Track an application</button>
-            </div>
-            <div className="trust"><span>✓ No hidden steps</span><span>✓ Secure verification</span><span>✓ Mobile friendly</span></div>
+        <section className={`cinema ${menuOpen ? "menuOpen" : ""}`}>
+          <div className="cinemaPlate" aria-hidden="true"><video autoPlay muted loop playsInline preload="auto"><source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260808_112712_da9d53df-6d27-4b12-bdf6-aa9dc2622bdf.mp4" type="video/mp4" /></video></div>
+          <div className="cinemaContent shell">
+            <p className="cinemaEyebrow">DIGITAL LENDING, BUILT ON TRUST</p>
+            <h1><span>The next chapter</span><span>starts with Tesfa.</span></h1>
+            <p className="cinemaSub"><span>A clear path from application to decision.</span><span>Secure verification. Human approval. No hidden steps.</span></p>
+            <div className="cinemaActions"><button onClick={() => setView("apply")}>Start an application</button><button onClick={() => setView("track")}>Track your application <span>↗</span></button></div>
           </div>
-          <div className="heroVisual" aria-label="Tesfa Loan application journey">
-            <div className="sun"></div><div className="pattern">፨ ፨ ፨ ፨</div>
-            <div className="phoneCard">
-              <div className="phoneTop"><span className="miniLogo">ተ</span><span className="secure">● Secure</span></div>
-              <small>Welcome to Tesfa</small><h3>What can we help you achieve?</h3>
-              <div className="purpose active"><span>▣</span><div><b>Grow my business</b><small>Stock, equipment or expansion</small></div><i>✓</i></div>
-              <div className="purpose"><span>⌂</span><div><b>Support my family</b><small>Education, home or wellbeing</small></div></div>
-              <div className="purpose"><span>✦</span><div><b>Something else</b><small>Tell us what you need</small></div></div>
-              <div className="miniButton">Continue <span>→</span></div>
-            </div>
-            <div className="float approved"><span>✓</span><div><b>Application approved</b><small>You're ready for the next step</small></div></div>
-            <div className="float protected"><span>◆</span><div><b>Your data is protected</b><small>Secure at every step</small></div></div>
-          </div>
-        </section>
-        <section className="steps shell">
-          <div><span>01</span><b>Apply in minutes</b><p>Tell us about yourself and what you need.</p></div>
-          <div><span>02</span><b>Verify securely</b><p>Complete identity and membership checks.</p></div>
-          <div><span>03</span><b>Follow your progress</b><p>Use your private IDs to see every update.</p></div>
+          <div className="cinemaProof shell" aria-label="Tesfa Loan service principles"><span><b>01</b> Apply online</span><span><b>02</b> Verify securely</span><span><b>03</b> Reviewed by people</span><span><b>04</b> Track every stage</span></div>
+          <div className="mobileMenu" aria-hidden={!menuOpen}><p>Menu</p><button onClick={() => { setMenuOpen(false); setView("apply"); }}>Apply for a loan <span>→</span></button><button onClick={() => { setMenuOpen(false); setView("track"); }}>Track application <span>→</span></button><button onClick={() => setMenuOpen(false)}>How it works <span>→</span></button></div>
         </section>
       </>}
 

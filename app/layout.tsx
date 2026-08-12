@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tesfa Loan | Finance Your Future",
-  description: "A secure, simple and transparent way to apply for a loan and follow every step.",
+  title: "Tesfa Loan | The Next Chapter Starts Here",
+  description: "Digital lending built on trust: apply securely, verify your identity, and track every stage.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
