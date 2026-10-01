@@ -1,0 +1,15 @@
+.dev.vars
+.env*
+.openai
+.wrangler
+.sites-stage
+build
+db
+dist
+examples
+worker
+scripts
+design-system
+*.tar.gz
+drizzle.config.ts
+vite.config.ts

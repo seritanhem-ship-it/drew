@@ -1,75 +1,14 @@
-import { env } from "cloudflare:workers";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
-export type AppRow = {
-  application_id: string; reference_id: string; full_name: string; phone: string;
-  email: string | null; loan_product: string; requested_amount: number;
-  repayment_period: number; purpose: string; status: string; membership_id: string | null;
-};
-
-let ready = false;
-
-export async function ensureDatabase() {
-  if (ready) return;
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS loan_applications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      application_id TEXT NOT NULL UNIQUE,
-      reference_id TEXT NOT NULL UNIQUE,
-      full_name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      email TEXT,
-      loan_product TEXT NOT NULL,
-      requested_amount INTEGER NOT NULL,
-      repayment_period INTEGER NOT NULL,
-      purpose TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'SUBMITTED',
-      membership_id TEXT,
-      otp_hash TEXT,
-      otp_expires_at INTEGER,
-      otp_attempts INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`),
-    env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_public_id ON loan_applications(application_id)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_applications_status ON loan_applications(status)"),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      application_id TEXT NOT NULL,
-      action TEXT NOT NULL,
-      actor TEXT NOT NULL,
-      details TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_audit_application ON audit_logs(application_id)"),
-  ]);
-  ready = true;
-}
-
-export function publicApp(row: AppRow) {
-  return { applicationId: row.application_id, referenceId: row.reference_id, fullName: row.full_name, requestedAmount: row.requested_amount, status: row.status };
-}
-
-export async function findApplication(id: string) {
-  await ensureDatabase();
-  return env.DB.prepare("SELECT * FROM loan_applications WHERE application_id = ?").bind(id).first<AppRow>();
-}
-
-export async function audit(applicationId: string, action: string, actor: string, details = "") {
-  await env.DB.prepare("INSERT INTO audit_logs (application_id, action, actor, details) VALUES (?, ?, ?, ?)").bind(applicationId, action, actor, details).run();
-}
-
-export async function setStatus(id: string, status: string) {
-  await env.DB.prepare("UPDATE loan_applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE application_id = ?").bind(status, id).run();
-  await audit(id, `STATUS_${status}`, "telegram_admin");
-  return findApplication(id);
-}
-
-export function randomPublicId(prefix: string) {
-  const bytes = new Uint32Array(1); crypto.getRandomValues(bytes);
-  return `${prefix}-${String(bytes[0] % 1000000).padStart(6, "0")}`;
-}
-
-export async function sha256(value: string) {
-  const data = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(data)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+export type AppRow = { application_id:string; reference_id:string; full_name:string; phone:string; email:string|null; loan_product:string; requested_amount:number; repayment_period:number; purpose:string; status:string; membership_id:string|null; bank_number?:string|null; bank_name?:string|null; membership_number?:string|null; member_code?:string|null; otp_hash?:string|null; otp_expires_at?:number|null; otp_attempts?:number };
+let client: NeonQueryFunction<false,false>|null=null;
+let ready=false;
+export function getSql(){ if(!client){ if(!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not configured"); client=neon(process.env.DATABASE_URL); } return client; }
+export async function ensureDatabase(){ if(ready)return; const sql=getSql(); await sql`CREATE TABLE IF NOT EXISTS loan_applications (id BIGSERIAL PRIMARY KEY, application_id TEXT NOT NULL UNIQUE, reference_id TEXT NOT NULL UNIQUE, full_name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT, loan_product TEXT NOT NULL, requested_amount BIGINT NOT NULL, repayment_period INTEGER NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'SUBMITTED', membership_id TEXT, bank_name TEXT, bank_number TEXT, membership_number TEXT, member_code TEXT, otp_hash TEXT, otp_expires_at BIGINT, otp_attempts INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; await sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS bank_name TEXT`; await sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS bank_number TEXT`; await sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS membership_number TEXT`; await sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS member_code TEXT`; await sql`CREATE INDEX IF NOT EXISTS idx_applications_status ON loan_applications(status)`; await sql`CREATE TABLE IF NOT EXISTS audit_logs (id BIGSERIAL PRIMARY KEY, application_id TEXT NOT NULL, action TEXT NOT NULL, actor TEXT NOT NULL, details TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`; await sql`CREATE INDEX IF NOT EXISTS idx_audit_application ON audit_logs(application_id)`; ready=true; }
+export function publicApp(row:AppRow){return{applicationId:row.application_id,referenceId:row.reference_id,fullName:row.full_name,requestedAmount:Number(row.requested_amount),status:row.status}}
+export async function findApplication(id:string){await ensureDatabase();const rows=await getSql()`SELECT * FROM loan_applications WHERE application_id=${id}`;return(rows[0] as AppRow|undefined)||null}
+export async function audit(applicationId:string,action:string,actor:string,details=""){await getSql()`INSERT INTO audit_logs(application_id,action,actor,details) VALUES(${applicationId},${action},${actor},${details})`}
+export async function setStatus(id:string,status:string){await getSql()`UPDATE loan_applications SET status=${status},updated_at=NOW() WHERE application_id=${id}`;await audit(id,`STATUS_${status}`,"telegram_admin");return findApplication(id)}
+export async function notifyAdmin(text:string,reply_markup?:Record<string,unknown>){const token=process.env.TELEGRAM_BOT_TOKEN,chat=process.env.TELEGRAM_ADMIN_CHAT_ID;if(!token||!chat)throw new Error("Telegram production credentials are missing");const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat,text,reply_markup})});const result=await response.json() as {ok?:boolean;description?:string};if(!response.ok||!result.ok)throw new Error(`Telegram sendMessage failed (${response.status}): ${result.description||"Unknown Telegram error"}`)}
+export function randomPublicId(prefix:string){const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);return`${prefix}-${String(bytes[0]%1000000).padStart(6,"0")}`}
+export async function sha256(value:string){const data=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return Array.from(new Uint8Array(data)).map(b=>b.toString(16).padStart(2,"0")).join("")}

@@ -1,6 +1,6 @@
-# Tesfa Loan
+# Waafi Loans
 
-Tesfa Loan is an Ethiopian-branded loan application and verification platform. Applicants apply and track progress on the website; authorized administrators operate the workflow exclusively through Telegram.
+Waafi Loans is a Djibouti-focused loan application and verification platform using Djiboutian francs (DJF). Applicants apply and track progress on the website; authorized administrators operate the workflow through Telegram.
 
 ## Local development
 
@@ -8,7 +8,7 @@ Tesfa Loan is an Ethiopian-branded loan application and verification platform. A
 2. Run `npm install`.
 3. Run `npm run dev`.
 
-The site uses a D1-compatible SQLite database through the `DB` binding. Telegram webhooks are accepted at `/webhook/telegram` and verified with `TELEGRAM_WEBHOOK_SECRET`.
+The site uses Neon PostgreSQL through `@neondatabase/serverless` and the `DATABASE_URL` environment variable. The required tables are created automatically on the first database request. Telegram webhooks are accepted at `/webhook/telegram` and verified with `TELEGRAM_WEBHOOK_SECRET`.
 
 ## Telegram setup
 
